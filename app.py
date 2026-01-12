@@ -20,7 +20,7 @@ def load_models():
 detector, tracker, face_recog = load_models()
 
 st.title("Face Recognition System")
-mode = st.selectbox("Mode", ["Image", "Webcam", "RTSP CCTV"])
+mode = st.selectbox("Mode", ["Image", "Webcam", "RTSP CCTV", "Register Face"])
 
 # ==================== Helper ====================
 def match_name_to_bbox(frame, detections, face_recog):
@@ -54,6 +54,38 @@ def match_name_to_bbox(frame, detections, face_recog):
         matched_results.append((det, best_name, best_conf))
     return matched_results
 
+def draw_matched_results(frame, matched_results):
+    """
+    Menggambar bounding box hijau, nama + confidence + tracker ID
+    """
+    for i, (det, name, conf) in enumerate(matched_results):
+        x1, y1, x2, y2, _ = det
+        cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+        text = f"{name} ({conf*100:.2f}%) ID:{i+1}"
+        bbox_height = y2 - y1
+        fontScale = max(bbox_height / frame.shape[0] * 2.0, 0.5)
+        thickness = max(int(bbox_height / frame.shape[0] * 2), 1)
+        (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, fontScale, thickness)
+        cv2.rectangle(frame, (x1, y1 - th - 6), (x1 + tw, y1), (0,0,0), -1)
+        cv2.putText(frame, text, (x1, y1 - 2), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0,0,255), thickness)
+    return frame
+
+def display_face_info(matched_results):
+    recognized = []
+    unknown_count = 0
+    for det, name, conf in matched_results:
+        if name == "Unknown":
+            unknown_count += 1
+        else:
+            recognized.append((name, conf))
+    st.markdown(f"**Total faces detected:** {len(matched_results)}")
+    st.markdown(f"**Known faces:** {len(recognized)}")
+    st.markdown(f"**Unknown faces:** {unknown_count}")
+    if recognized:
+        st.markdown("**Recognized faces:**")
+        for name, conf in recognized:
+            st.markdown(f"- {name} ({conf*100:.2f}%)")
+
 # ================= IMAGE MODE =================
 if mode == "Image":
     uploaded = st.file_uploader("Upload image", type=["jpg", "png", "jpeg"])
@@ -62,29 +94,16 @@ if mode == "Image":
         detections = detector.detect(image)
         tracker.init_from_detections(image, detections)
         tracks = tracker.update(image)
-
         matched_results = match_name_to_bbox(image, detections, face_recog)
-
-        for i, (det, name, conf) in enumerate(matched_results):
-            x1, y1, x2, y2, _ = det
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0,255,0), 2)
-            text = f"{name} ({conf:.2f}) ID:{i+1}"  # tracker ID = index YOLO
-            bbox_height = y2 - y1
-            fontScale = max(bbox_height / image.shape[0] * 2.0, 0.5)
-            thickness = max(int(bbox_height / image.shape[0] * 2), 1)
-            (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, fontScale, thickness)
-            cv2.rectangle(image, (x1, y1 - th - 6), (x1 + tw, y1), (0,0,0), -1)
-            cv2.putText(image, text, (x1, y1 - 2), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0,0,255), thickness)
-
+        image = draw_matched_results(image, matched_results)
         st.image(image, channels="BGR")
-        st.success(f"Detected faces: {len(detections)}")
+        display_face_info(matched_results)
 
 # ================= WEBCAM MODE =================
 elif mode == "Webcam":
     start = st.button("Start Webcam")
     stop = st.button("Stop Webcam")
     frame_placeholder = st.empty()
-
     if start:
         cap = cv2.VideoCapture(0)
         tracker = FaceTracker()
@@ -98,7 +117,6 @@ elif mode == "Webcam":
                 break
 
             frame_count += 1
-            # Redetect YOLO setiap 10 frame
             if frame_count % 10 == 0 or not initialized:
                 last_detections = detector.detect(frame)
                 tracker.init_from_detections(frame, last_detections)
@@ -106,19 +124,10 @@ elif mode == "Webcam":
 
             tracks = tracker.update(frame)
             matched_results = match_name_to_bbox(frame, last_detections, face_recog)
-
-            for i, (det, name, conf) in enumerate(matched_results):
-                x1, y1, x2, y2, _ = det
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
-                text = f"{name} ({conf:.2f}) ID:{i+1}"
-                bbox_height = y2 - y1
-                fontScale = max(bbox_height / frame.shape[0] * 2.0, 0.5)
-                thickness = max(int(bbox_height / frame.shape[0] * 2), 1)
-                (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, fontScale, thickness)
-                cv2.rectangle(frame, (x1, y1 - th - 6), (x1 + tw, y1), (0,0,0), -1)
-                cv2.putText(frame, text, (x1, y1 - 2), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0,0,255), thickness)
-
+            frame = draw_matched_results(frame, matched_results)
             frame_placeholder.image(frame, channels="BGR")
+            display_face_info(matched_results)
+
             time.sleep(0.03)
             if stop:
                 break
@@ -130,7 +139,6 @@ elif mode == "RTSP CCTV":
     start = st.button("Start Stream")
     stop = st.button("Stop Stream")
     frame_placeholder = st.empty()
-
     if start and rtsp_url:
         cap = cv2.VideoCapture(rtsp_url)
         tracker = FaceTracker()
@@ -151,20 +159,39 @@ elif mode == "RTSP CCTV":
 
             tracks = tracker.update(frame)
             matched_results = match_name_to_bbox(frame, last_detections, face_recog)
-
-            for i, (det, name, conf) in enumerate(matched_results):
-                x1, y1, x2, y2, _ = det
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
-                text = f"{name} ({conf:.2f}) ID:{i}"
-                bbox_height = y2 - y1
-                fontScale = max(bbox_height / frame.shape[0] * 2.0, 0.5)
-                thickness = max(int(bbox_height / frame.shape[0] * 2), 1)
-                (tw, th), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, fontScale, thickness)
-                cv2.rectangle(frame, (x1, y1 - th - 6), (x1 + tw, y1), (0,0,0), -1)
-                cv2.putText(frame, text, (x1, y1 - 2), cv2.FONT_HERSHEY_SIMPLEX, fontScale, (0,0,255), thickness)
-
+            frame = draw_matched_results(frame, matched_results)
             frame_placeholder.image(frame, channels="BGR")
+            display_face_info(matched_results)
+
             time.sleep(0.03)
             if stop:
                 break
         cap.release()
+
+# ================= REGISTER FACE (Upload Multi-Angle) =================
+elif mode == "Register Face":
+    st.subheader("Register Face (Upload 3-5 images)")
+
+    name_input = st.text_input("Enter name for this face")
+    uploaded_files = st.file_uploader("Upload 3-5 face images", type=["jpg","png","jpeg"], accept_multiple_files=True)
+    register_btn = st.button("Register Face")
+
+    if register_btn:
+        if not name_input.strip():
+            st.warning("Please enter a valid name!")
+        elif not uploaded_files or len(uploaded_files) < 3:
+            st.warning("Please upload at least 3 images for multi-angle registration!")
+        else:
+            embeddings = []
+            for file in uploaded_files:
+                img = cv2.imdecode(np.frombuffer(file.read(), np.uint8), cv2.IMREAD_COLOR)
+                faces = face_recog.model.get(img)
+                if faces:
+                    embeddings.append(faces[0].embedding)
+            if embeddings:
+                avg_emb = np.mean(embeddings, axis=0)
+                np.save(f"{FACE_DB_PATH}/{name_input.strip()}.npy", avg_emb)
+                face_recog.embeddings[name_input.strip()] = avg_emb
+                st.success(f"Face '{name_input.strip()}' registered successfully with {len(embeddings)} images!")
+            else:
+                st.error("No faces detected in the uploaded images!")

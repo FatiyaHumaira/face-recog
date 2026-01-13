@@ -1,45 +1,75 @@
 import os
-import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
 
+
 class FaceRecognition:
-    def __init__(self, db_path="face_db"):
-        self.model = FaceAnalysis(name="buffalo_l", providers=['CPUExecutionProvider'])
-        self.model.prepare(ctx_id=-1)  # CPU
+    def __init__(self, db_path="face_db", threshold=0.50):
         self.db_path = db_path
-        os.makedirs(self.db_path, exist_ok=True)
+        self.threshold = threshold
+
+        self.model = FaceAnalysis(
+            name="buffalo_l",
+            providers=["CPUExecutionProvider"]
+        )
+        self.model.prepare(ctx_id=-1)
+
         self.embeddings = {}
         self.load_database()
 
     def load_database(self):
-        for fname in os.listdir(self.db_path):
-            if fname.endswith(".npy"):
-                name = fname.replace(".npy", "")
-                self.embeddings[name] = np.load(os.path.join(self.db_path, fname))
+        os.makedirs(self.db_path, exist_ok=True)
 
-    def register_face(self, name, image):
-        faces = self.model.get(image)
-        if faces:
-            emb = faces[0].embedding
-            np.save(os.path.join(self.db_path, f"{name}.npy"), emb)
-            self.embeddings[name] = emb
-            return True
-        return False
+        for f in os.listdir(self.db_path):
+            if f.endswith(".npy"):
+                name = f.replace(".npy", "")
+                self.embeddings[name] = np.load(
+                    os.path.join(self.db_path, f)
+                )
 
-    def recognize(self, image, threshold=0.6):
-        faces = self.model.get(image)
+    # ================= REGISTER =================
+    def register(self, name, images):
+        embs = []
+        for img in images:
+            faces = self.model.get(img)
+            if faces:
+                embs.append(faces[0].embedding)
+
+        if not embs:
+            return False
+
+        avg_emb = np.mean(embs, axis=0)
+        np.save(os.path.join(self.db_path, f"{name}.npy"), avg_emb)
+        self.embeddings[name] = avg_emb
+        return True
+
+    # ================= IMAGE / FRAME RECOGNITION =================
+    def recognize(self, image):
         results = []
+        faces = self.model.get(image)
+
         for face in faces:
-            emb = face.embedding
-            name = "Unknown"
-            best_sim = 0  # default similarity
-            for db_name, db_emb in self.embeddings.items():
-                sim = np.dot(emb, db_emb)/(np.linalg.norm(emb)*np.linalg.norm(db_emb))
-                if sim > best_sim and sim > threshold:
-                    best_sim = sim
-                    name = db_name
-            results.append((face.bbox.astype(int), name, best_sim))  # tambahkan best_sim
+            box = face.bbox.astype(int)
+            name, score = self.recognize_embedding(face.embedding)
+            results.append((box, name, score))
+
         return results
 
+    # ================= CORE MATCHING =================
+    def recognize_embedding(self, emb):
+        best_name = "Unknown"
+        best_score = 0.0
 
+        for name, db_emb in self.embeddings.items():
+            score = np.dot(emb, db_emb) / (
+                np.linalg.norm(emb) * np.linalg.norm(db_emb)
+            )
+
+            if score > best_score:
+                best_score = score
+                best_name = name
+
+        if best_score < self.threshold:
+            return "Unknown", float(best_score)
+
+        return best_name, float(best_score)

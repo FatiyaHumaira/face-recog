@@ -1,31 +1,29 @@
 import streamlit as st
 import cv2
 import numpy as np
-import os
+import pandas as pd
 import time
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-
-from core.detector import FaceDetectorYOLO
-from core.tracker import FaceTracker
-from core.drawer import draw_boxes, draw_tracks
 from core.face_recog import FaceRecognition
-from core.webcam_register import register_from_webcam
 
-# ===================== CONFIG =====================
-YOLO_MODEL_PATH = "models/yolov8n_face.onnx"
+# ================= CONFIG =================
 FACE_DB_PATH = "face_db"
 
-# ===================== LOAD MODELS =====================
 @st.cache_resource
-def load_models():
-    detector = FaceDetectorYOLO(YOLO_MODEL_PATH, conf_thresh=0.25, iou_thresh=0.3)
-    tracker = FaceTracker()
-    face_recog = FaceRecognition(db_path=FACE_DB_PATH)
-    return detector, tracker, face_recog
+def load_model():
+    return FaceRecognition(db_path=FACE_DB_PATH, threshold=0.50)
 
-detector, tracker, face_recog = load_models()
+face_recog = load_model()
 
-# ===================== UI =====================
+# ================= HELPER =================
+def confidence_level(score):
+    if score >= 0.75:
+        return "High"
+    elif score >= 0.50:
+        return "Medium"
+    else:
+        return "Low"
+
+# ================= UI =================
 st.title("Face Recognition System")
 
 mode = st.selectbox(
@@ -33,76 +31,98 @@ mode = st.selectbox(
     [
         "Image Recognition",
         "Webcam Recognition",
-        "Register Face",
-        "RTSP CCTV"
+        "Register Face"
     ]
 )
 
-# ===================== IMAGE RECOGNITION =====================
+# ================= IMAGE RECOGNITION =================
 if mode == "Image Recognition":
-    uploaded = st.file_uploader("Upload image", type=["jpg", "png", "jpeg"])
-    if uploaded:
-        image = cv2.imdecode(np.frombuffer(uploaded.read(), np.uint8), cv2.IMREAD_COLOR)
+    uploaded = st.file_uploader("Upload image", ["jpg", "png", "jpeg"])
 
-        detections = detector.detect(image)
-        image = draw_boxes(image, detections)
+    if uploaded:
+        image = cv2.imdecode(
+            np.frombuffer(uploaded.read(), np.uint8),
+            cv2.IMREAD_COLOR
+        )
 
         results = face_recog.recognize(image)
 
-        recognized = 0
-        unknown = 0
-        conf_scores = []
-        table_data = []
+        table_rows = []
 
-        for bbox, name, score in results:
-            x1, y1, x2, y2 = bbox
-            label = f"{name} ({score*100:.1f}%)"
+        for idx, ((x1, y1, x2, y2), name, score) in enumerate(results, start=1):
 
+            if score < face_recog.threshold:
+                name = "Unknown"
+                color = (0, 0, 255)  # RED
+            else:
+                color = (0, 255, 0)  # GREEN
+
+            label = f"{name} | ID: {idx}"
+
+            cv2.rectangle(image, (x1, y1), (x2, y2), color, 2)
             cv2.putText(
                 image,
                 label,
                 (x1, y1 - 8),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.6,
-                (0, 0, 255),
+                0.55,
+                color,
                 2
             )
 
-            if name == "Unknown":
-                unknown += 1
-            else:
-                recognized += 1
-                conf_scores.append(score)
-
-            table_data.append({
+            table_rows.append({
+                "Face ID": idx,
                 "Name": name,
-                "Confidence (%)": round(score * 100, 2)
+                "Similarity": round(score, 3),
+                "Confidence Level": confidence_level(score)
             })
 
         st.image(image, channels="BGR")
+        recognized_names = sorted({
+            row["Name"] for row in table_rows
+            if row["Name"] != "Unknown"
+        })
 
-        st.success(f"Detected faces (YOLO): {len(detections)}")
-        st.success(f"Recognized faces: {recognized}")
-        st.warning(f"Unknown faces: {unknown}")
+        if recognized_names:
+            st.subheader(f"Recognized Faces ({len(recognized_names)})")
+            for name in recognized_names:
+                st.markdown(f"- **{name}**")
+        else:
+            st.info("No known faces recognized")
 
-# ===================== WEBCAM RECOGNITION =====================
+        df = pd.DataFrame(table_rows)
+        detected = len(results)
+        recognized = (df["Name"] != "Unknown").sum()
+        unknown = (df["Name"] == "Unknown").sum()
+        
+
+        col1, col2, col3 = st.columns(3)
+        col1.success(f"Detected faces: {detected}")
+        col2.success(f"Recognized faces: {recognized}")
+        col3.warning(f"Unknown faces: {unknown}")
+
+        st.subheader("Recognition Results")
+        st.dataframe(df, use_container_width=True)
+
+        # st.caption(
+        #     "Detected = all faces found by detector. "
+        #     "Recognized = similarity ≥ threshold. "
+        #     "Unknown = similarity < threshold."
+        # 
+
+        # st.caption(
+        #     "Similarity is cosine similarity to the face database. "
+        #     "Bounding boxes show identity only; details are in the table."
+        # )
+
+# ================= WEBCAM RECOGNITION =================
 elif mode == "Webcam Recognition":
-
     start = st.button("▶ Start Webcam")
     stop = st.button("⏹ Stop Webcam")
-    frame_placeholder = st.empty()
+    frame_box = st.empty()
 
     if start:
         cap = cv2.VideoCapture(0)
-        tracker = FaceTracker()
-
-        frame_count = 0
-        detections = []
-        track_id_to_name = {}
-
-        DETECT_EVERY = 12
-        RECOG_EVERY = 20
-
         last_time = time.time()
         fps = 0
 
@@ -112,55 +132,44 @@ elif mode == "Webcam Recognition":
                 break
 
             frame = cv2.resize(frame, (640, 480))
-            frame_count += 1
+            results = face_recog.recognize(frame)
 
-            # ---------- DETECTION ----------
-            if frame_count % DETECT_EVERY == 0:
-                detections = detector.detect(frame)
-                tracker.init_or_update(frame, detections)
+            for idx, ((x1, y1, x2, y2), name, score) in enumerate(results, start=1):
 
-            tracks = tracker.update(frame)
+                if score < face_recog.threshold:
+                    name = "Unknown"
+                    color = (0, 0, 255)
+                else:
+                    color = (0, 255, 0)
 
-            # ---------- RECOGNITION (CACHE) ----------
-            if frame_count % RECOG_EVERY == 0:
-                recog_results = face_recog.recognize(frame)
+                label = f"{name} | ID: {idx}"
 
-                for x1,y1,x2,y2,tid in tracks:
-                    for fb,name,score in recog_results:
-                        fx1,fy1,fx2,fy2 = fb
-                        ix1 = max(x1, fx1)
-                        iy1 = max(y1, fy1)
-                        ix2 = min(x2, fx2)
-                        iy2 = min(y2, fy2)
-                        inter = max(0, ix2-ix1) * max(0, iy2-iy1)
-                        area = (fx2-fx1)*(fy2-fy1)
-
-                        if area > 0 and inter/area > 0.5:
-                            track_id_to_name[tid] = (name, score)
-                            break
-
-            # ---------- DRAW ----------
-            for x1,y1,x2,y2,tid in tracks:
-                name, score = track_id_to_name.get(tid, ("Unknown", 0))
-                cv2.rectangle(frame, (x1,y1), (x2,y2), (0,255,0), 2)
+                cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(
                     frame,
-                    f"{name} ({score*100:.1f}%)",
-                    (x1, y1-8),
+                    label,
+                    (x1, y1 - 8),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (0,255,0),
+                    0.55,
+                    color,
                     2
                 )
 
-            # ---------- FPS ----------
             now = time.time()
-            fps = 0.9 * fps + 0.1 * (1 / max(now-last_time, 1e-6))
+            fps = 0.9 * fps + 0.1 * (1 / max(now - last_time, 1e-6))
             last_time = now
-            cv2.putText(frame, f"FPS: {int(fps)}", (10,25),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,0,0), 2)
 
-            frame_placeholder.image(frame, channels="BGR")
+            cv2.putText(
+                frame,
+                f"FPS: {int(fps)}",
+                (10, 25),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                (255, 0, 0),
+                2
+            )
+
+            frame_box.image(frame, channels="BGR")
 
             if stop:
                 break
@@ -168,157 +177,26 @@ elif mode == "Webcam Recognition":
         cap.release()
         st.success("Webcam stopped")
 
-# ===================== REGISTER FACE =====================
+# ================= REGISTER FACE =================
 elif mode == "Register Face":
-    st.subheader("Register Face")
+    name = st.text_input("Name")
 
-    name_input = st.text_input("Name")
-
-    method = st.radio(
-        "Method",
-        ["Upload Images", "Webcam (Inline)"]
+    files = st.file_uploader(
+        "Upload 3–5 face images",
+        type=["jpg", "png", "jpeg"],
+        accept_multiple_files=True
     )
 
-    # ================= UPLOAD =================
-    if method == "Upload Images":
-        files = st.file_uploader(
-            "Upload 3–5 images",
-            type=["jpg","png","jpeg"],
-            accept_multiple_files=True
-        )
+    if st.button("Register"):
+        if not name or not files or len(files) < 3:
+            st.warning("Name + minimum 3 images required")
+        else:
+            images = [
+                cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_COLOR)
+                for f in files
+            ]
 
-        if st.button("Register"):
-            if not name_input or not files or len(files) < 3:
-                st.warning("Name + minimum 3 images required")
+            if face_recog.register(name, images):
+                st.success(f"{name} registered successfully")
             else:
-                embs = []
-                for f in files:
-                    img = cv2.imdecode(np.frombuffer(f.read(), np.uint8), cv2.IMREAD_COLOR)
-                    faces = face_recog.model.get(img)
-                    if faces:
-                        embs.append(faces[0].embedding)
-
-                if embs:
-                    avg = np.mean(embs, axis=0)
-                    np.save(f"{FACE_DB_PATH}/{name_input}.npy", avg)
-                    face_recog.embeddings[name_input] = avg
-                    st.success(f"{name_input} registered")
-                else:
-                    st.error("No face detected")
-
-    # ================= WEBCAM INLINE =================
-    else:
-        st.info("Klik Start Webcam → Capture 3–5 kali → Finish")
-
-        # session state init
-        if "cam_running" not in st.session_state:
-            st.session_state.cam_running = False
-        if "last_frame" not in st.session_state:
-            st.session_state.last_frame = None
-        if "captured_frames" not in st.session_state:
-            st.session_state.captured_frames = []
-
-        col1, col2 = st.columns([3, 1])
-
-        with col1:
-            start = st.button("▶ Start Webcam")
-            stop = st.button("⏹ Stop Webcam")
-            frame_box = st.empty()
-
-        with col2:
-            capture = st.button("📸 Capture")
-            finish = st.button("✅ Finish")
-
-        # START
-        if start:
-            st.session_state.cam_running = True
-            st.session_state.cap = cv2.VideoCapture(0)
-
-        # STOP
-        if stop and "cap" in st.session_state:
-            st.session_state.cam_running = False
-            st.session_state.cap.release()
-
-        # LOOP FRAME
-        if st.session_state.cam_running:
-            ret, frame = st.session_state.cap.read()
-            if ret:
-                frame = cv2.resize(frame, (640, 480))
-                st.session_state.last_frame = frame.copy()
-
-                faces = face_recog.model.get(frame)
-                for face in faces:
-                    x1,y1,x2,y2 = face.bbox.astype(int)
-                    cv2.rectangle(frame,(x1,y1),(x2,y2),(0,255,0),2)
-
-                frame_box.image(frame, channels="BGR")
-
-        # CAPTURE
-        if capture:
-            if st.session_state.last_frame is not None:
-                st.session_state.captured_frames.append(
-                    st.session_state.last_frame.copy()
-                )
-                st.success(f"Captured {len(st.session_state.captured_frames)} frame(s)")
-            else:
-                st.warning("Webcam not ready")
-
-        # FINISH
-        if finish:
-            if not name_input:
-                st.warning("Enter name first")
-            elif len(st.session_state.captured_frames) < 3:
-                st.warning("Capture at least 3 frames")
-            else:
-                embs = []
-                for img in st.session_state.captured_frames:
-                    faces = face_recog.model.get(img)
-                    if faces:
-                        embs.append(faces[0].embedding)
-
-                if embs:
-                    avg = np.mean(embs, axis=0)
-                    np.save(f"{FACE_DB_PATH}/{name_input}.npy", avg)
-                    face_recog.embeddings[name_input] = avg
-                    st.success(f"{name_input} registered successfully")
-
-                    st.session_state.captured_frames.clear()
-                    st.session_state.cam_running = False
-                    if "cap" in st.session_state:
-                        st.session_state.cap.release()
-                else:
-                    st.error("No face detected")
-
-# # ===================== RTSP CCTV =====================
-# elif mode == "RTSP CCTV":
-#     rtsp_url = st.text_input("RTSP URL")
-#     start = st.button("Start")
-
-#     if start:
-#         cap = cv2.VideoCapture(rtsp_url)
-#         tracker = FaceTracker()
-#         frame_placeholder = st.empty()
-
-#         while cap.isOpened():
-#             ret, frame = cap.read()
-#             if not ret:
-#                 break
-
-#             detections = detector.detect(frame)
-#             if detections:
-#                 tracker.init_from_detections(frame, detections)
-
-#             tracks = tracker.update(frame)
-#             frame = draw_tracks(frame, tracks)
-
-#             results = face_recog.recognize(frame)
-#             for bbox, name, score in results:
-#                 x1, y1, x2, y2 = bbox
-#                 cv2.putText(frame, f"{name} ({score*100:.1f}%)",
-#                             (x1, y1 - 8),
-#                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 2)
-
-#             frame_placeholder.image(frame, channels="BGR")
-#             time.sleep(0.03)
-
-#         cap.release()
+                st.error("No face detected in uploaded images")

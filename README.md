@@ -1,37 +1,34 @@
-# 🎯 Face Recognition API untuk 1000 Water Channel Doors
+# Face Recognition API untuk 1000 Water Channel Doors
 
-Sistem pengenalan wajah berbasis FastAPI + PostgreSQL untuk kontrol akses pintu air.
+Sistem pengenalan wajah berbasis FastAPI + PostgreSQL untuk penggunaan sistem keamanan berbasis AI.
 
 **⚡ Quick Commands:**
 ```bash
 # Setup database
 psql -U postgres -f setup_db.sql
 
-# Register staff from CSV
+# Mendafkan wajah petugas dari file CSV
 python bulk_register.py water_channel_officers.csv
 
-# Check missing registrations
+# Mengecek data petugas yang belum terdaftar
 python check_registration.py water_channel_officers.csv
 
-# Start API with webhook
+# Menjalankan API dengan webhook aktif
 export WEBHOOK_ENABLED=true
 export WEBHOOK_URL=http://192.168.1.10:9000/api/detection-webhook
 python run_api.py
 
-# Test webhook (mock server)
+# Menjalankan webhook untuk pengujian (mock server)
 python test_webhook_server.py
 
-# Reset all data
-python reset_database.py
-
-# Fix dimension errors
-python cleanup_embeddings.py --cleanup
+# Verifikasi keseluruhan setup sistem
+python verify_setup.py
 ```
 
-**📊 Current Status:**
+**📊 Status saat ini:**
 - ✅ Database: PostgreSQL 14+ (unified storage)
 - ✅ Model: InsightFace buffalo_l (512D embeddings)
-
+- ✅ Webhook: Async integration ready
 
 ## 📋 Daftar Isi
 - [⚡ Quick Start](#quick-start)
@@ -42,10 +39,8 @@ python cleanup_embeddings.py --cleanup
 - [🔔 Webhook Integration](#webhook-integration)
 - [🛠️ Management Scripts](#management-scripts)
 - [⚙️ Konfigurasi](#konfigurasi)
-- [🔍 Troubleshooting](#troubleshooting)
+- [�️ Troubleshooting](#troubleshooting)
 - [📂 Struktur Project](#struktur-project)
-- [📊 Performance Metrics](#performance-metrics)
-- [🔐 Security Notes](#security-notes)
 
 ---
 
@@ -104,17 +99,17 @@ Output yang diharapkan:
 ✅ Connection successful!
 ✅ Table created!
 ✅ Insert successful!
-✅ Table has 1 records
+✅ Table has 1 records (TEST_STAFF)
 ```
 
-### 4. Register Officers dari CSV
+### 4. Register petugas dari data CSV
 
 ```bash
-# Dari water_channel_officers.csv (2000+ staff)
+# Dari water_channel_officers.csv 
 python bulk_register.py water_channel_officers.csv
 ```
 
-Output:
+Contoh Output:
 ```
 Registering officers: |████████████| 2093/2093
 ✅ Success: 1847
@@ -145,7 +140,7 @@ curl -X POST http://localhost:8000/recognize \
   -H "Content-Type: application/json" \
   -d '{
     "image_url": "https://example.com/photo.jpg",
-    "water_channel_door_id": "DOOR_001"
+    "water_channel_door_id": "001"
   }'
 ```
 
@@ -153,9 +148,9 @@ curl -X POST http://localhost:8000/recognize \
 ### Data Flow: Recognition
 
 ```
-Image URL (dari door)
+Image URL (dari CC)
     ↓
-[Download image dari internet]
+[Download image]
     ↓
 [Load model InsightFace]
     ↓
@@ -167,7 +162,7 @@ Image URL (dari door)
     ↓
 [Return: [staff_id1, staff_id2, ...]]
     ↓
-Door → Buka/Tutup akses
+Unknown terdeteksi → Alarm
 ```
 
 ---
@@ -180,31 +175,49 @@ Door → Buka/Tutup akses
 face-recog/
 ├── api/
 │   ├── __init__.py
-│   ├── app.py              # Main FastAPI application
-│   ├── models.py           # Pydantic models (updated with webhook format)
-│   └── webhook.py          # Webhook transformation & sending
+│   ├── app.py                  # Aplikasi utama FastAPI
+│   ├── models.py               # Model Pydantic (format request/response & webhook)
+│   └── webhook.py              # Transformasi dan pengiriman webhook
+│
 ├── core/
 │   ├── __init__.py
-│   ├── face_recog.py       # Face recognition logic (512D embeddings)
-│   └── db_helper.py        # Database manager (PostgreSQL operations)
-├── face_db/                # Local .npy backup (development)
-│   ├── staff_285.npy
-│   └── ...
-├── config.py               # Configuration settings
-├── requirements.txt        # Python dependencies
-├── test_db.py              # Database connection test
-├── bulk_register.py        # Bulk registration from CSV
-├── check_registration.py   # Check missing registrations
-├── reset_database.py       # Reset/clear all data
-├── cleanup_embeddings.py   # Fix dimension mismatches
-├── test_webhook_server.py  # Mock webhook receiver
-├── test_webhook_quick.py   # Webhook integration tester
-├── run_api.py              # Simple API runner
-├── run_api.bat             # Windows batch launcher
-├── README.md               # This file
-├── WEBHOOK_QUICKREF.md     # Webhook integration guide
-├── DATABASE_REFERENCE.md   # Database operations reference
-└── ARCHITECTURE_1000DOORS.md  # Detailed architecture explanation
+│   ├── face_recog.py           # Logika pengenalan wajah (embedding 512 dimensi)
+│   └── db_helper.py            # Helper database (operasi PostgreSQL)
+│
+├── runs/
+│   └── detect/                 # Hasil deteksi (jika fitur diaktifkan)
+│
+├── config.py                   # Konfigurasi aplikasi
+├── requirements.txt            # Daftar dependensi Python
+├── .env.example                # Contoh variabel environment
+│
+├── bulk_register.py            # Bulk register dari file CSV
+├── check_registration.py       # Pemeriksaan data pendaftaran yang belum terdaftar
+├── test_db.py                  # Pengujian koneksi database
+├── verify_setup.py             # Verifikasi keseluruhan setup sistem
+│
+├── test_api.py                 # Pengujian integrasi API
+├── test_webhook_server.py      # Server webhook tiruan (mock)
+├── test_webhook_integration.py # Pengujian integrasi webhook
+├── test_webhook_quick.py       # Pengujian webhook cepat
+│
+├── run_api.py                  # Menjalankan API (mode pengembangan)
+├── run_api.bat                 # Launcher API untuk Windows
+│
+├── water_channel_officers.csv  # Data petugas pintu air (2093 data)
+└── README.md                   # Dokumentasi proyek
+
+```
+
+**Generated Files (during runtime):**
+```
+face_db/                    # .npy backup files (auto-created)
+├── 285.npy
+├── 228.npy
+└── ...
+
+missing_registrations.csv   # Generated by check_registration.py
+failed_registrations.csv    # Generated by bulk_register.py
 ```
 
 ### Install & Run
@@ -226,46 +239,20 @@ Browser: `http://localhost:8000/docs` (Swagger UI)
 
 ---
 
-## 🚀 Deployment Produksi
-
-### Untuk 1000 Doors
-
-#### Phase 1: Test (Sekarang)
-```
-Local Development
-├─ 1 computer
-├─ PostgreSQL lokal
-└─ Test semua API
-```
-
-#### Phase 2: Production (Minggu Depan)
-```
-Server Kantor Pusat
-├─ Buy/setup server dedicated
-├─ Install PostgreSQL
-├─ Deploy API dengan Gunicorn/Uvicorn
-├─ Setup backup otomatis
-└─ Configure firewall
-
-1000 Doors
-├─ Update connection string
-├─ Point ke server pusat
-└─ Test dari setiap door
-```
 
 ### Server Requirements
 
 **Minimum:**
-- CPU: 4 core
-- RAM: 8GB
-- Storage: 500GB (untuk backup)
-- Network: 100 Mbps
+- CPU      : 4 core
+- RAM      : 8 GB
+- Storage  : 256 GB SSD
+- Network  : 100 Mbps
 
 **Recommended:**
-- CPU: 8 core
-- RAM: 16GB
-- Storage: 1TB SSD
-- Network: 1 Gbps
+- CPU      : 8 core
+- RAM      : 16 GB
+- Storage  : 512 GB – 1 TB SSD
+- Network  : 300 Mbps – 1 Gbps
 - Backup: External drive / Cloud
 
 ### Deployment Steps
@@ -317,9 +304,20 @@ pg_dump -U face_user face_recognition | \
 
 ## 📡 API Reference
 
+### Base URL
+```
+http://localhost:8000
+```
+
+API Documentation (Swagger): `http://localhost:8000/docs`
+
+---
+
 ### 1. Health Check
 
 **Endpoint:** `GET /health`
+
+Cek status API server.
 
 ```bash
 curl http://localhost:8000/health
@@ -328,101 +326,159 @@ curl http://localhost:8000/health
 **Response:**
 ```json
 {
-  "status": "OK",
-  "message": "Server is running, model loaded"
+  "status": "healthy",
+  "message": "Face Recognition API is running"
 }
 ```
 
 ---
 
-### 2. Register Staff (Manual)
+### 2. Register Petugas (Manual - 4 Photos)
 
 **Endpoint:** `POST /faceregister`
 
-Upload 4 photo + staff_id
+Register petugas dengan 4 foto dari sudut berbeda (front, left, right, top).
+
+**Request:** multipart/form-data
 
 ```bash
 curl -X POST http://localhost:8000/faceregister \
-  -F "staff_id=EMP_001" \
-  -F "photo1=@photo1.jpg" \
-  -F "photo2=@photo2.jpg" \
-  -F "photo3=@photo3.jpg" \
-  -F "photo4=@photo4.jpg"
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "staff_id": "EMP_001",
-  "message": "Registration successful"
-}
-```
-
-**Error Cases:**
-```json
-// Foto invalid
-{
-  "success": false,
-  "message": "Face not detected in photo1"
-}
-
-// Staff sudah ada
-{
-  "success": false,
-  "message": "Staff already registered"
-}
-```
-
----
-
-### 3. Recognize (Main Endpoint)
-
-**Endpoint:** `POST /facerecognizer`
-
-Detect wajah di image URL
-
-```bash
-curl -X POST http://localhost:8000/facerecognizer \
-  -H "Content-Type: application/json" \
-  -d '{
-    "image_url": "https://example.com/camera_door_001.jpg",
-    "water_channel_door_id": "DOOR_001"
-  }'
+  -F "staff_id=285" \
+  -F "photo_front=@front.jpg" \
+  -F "photo_left=@left.jpg" \
+  -F "photo_right=@right.jpg" \
+  -F "photo_top=@top.jpg"
 ```
 
 **Response (Success):**
 ```json
 {
-  "recognized_ids": ["EMP_001", "EMP_045"],
-  "water_channel_door_id": "DOOR_001",
-  "message": "2 faces recognized"
+  "success": true,
+  "staff_id": "285",
+  "message": "Registration successful"
 }
 ```
 
-**Response (Mixed):**
+**Response (Error):**
 ```json
 {
-  "recognized_ids": ["EMP_001", "unknown", "EMP_045"],
-  "water_channel_door_id": "DOOR_001",
-  "message": "2 recognized, 1 unknown"
+  "success": false,
+  "staff_id": "285",
+  "message": "Not enough valid face samples (minimum 3)"
 }
 ```
 
-**Response (No Faces):**
+**Notes:**
+- Wajib mengunggah tepat 4 foto
+- Wajah harus terdeteksi minimal di 3 foto
+- Data disimpan ke database PostgreSQL dan cadangan (.npy)
+- Akan mengembalikan error jika staf sudah terdaftar
+
+---
+
+### 3. Face Recognition (Main Endpoint)
+
+**Endpoint:** `POST /facerecognizer`
+
+Recognize faces dari image URL dan kirim webhook notification.
+Endpoint ini digunakan untuk **mengenali wajah dari sebuah gambar** yang diambil melalui **URL kamera / CCTV**.
+
+---
+
+### Cara Kerja Singkat
+
+1. Sistem **mengunduh gambar** dari URL yang diberikan  
+2. Sistem **mendeteksi semua wajah** yang terdapat di dalam gambar  
+3. Setiap wajah akan diperiksa apakah **dikenal (terdaftar)** atau **tidak dikenal (unknown)**  
+4. Hasil pengenalan dikembalikan dalam bentuk **response JSON**  
+5. Jika fitur webhook diaktifkan, sistem akan **mengirimkan data ke endpoint webhook secara otomatis**
+
+---
+
+
+
+**Request Body:**
+```json
+{
+  "image_url": "http://10.44.44.2:9000/manganti-adapter/officer/photo.jpg",
+  "water_channel_door_id": "278"
+}
+```
+
+**Contoh:**
+```bash
+curl -X POST http://localhost:8000/facerecognizer \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_url": "https://example.com/camera_door_278.jpg",
+    "water_channel_door_id": "278"
+  }'
+```
+
+**Response - Satu wajah dikenal:**
+```json
+{
+  "recognized_ids": "285",
+  "water_channel_door_id": "278",
+  "message": "Recognized: 285"
+}
+```
+
+**Response - Beberapa wajah (campuran):**
+```json
+{
+  "recognized_ids": ["285", "unknown", "228"],
+  "water_channel_door_id": "278",
+  "message": "Found 3 face(s)"
+}
+```
+
+**Response - Wajah tidak dikenal:**
+```json
+{
+  "recognized_ids": "unknown",
+  "water_channel_door_id": "278",
+  "message": "Recognized: unknown"
+}
+```
+
+**Response - Tidak ada wajah:**
 ```json
 {
   "recognized_ids": "0",
-  "water_channel_door_id": "DOOR_001",
+  "water_channel_door_id": "278",
   "message": "No faces detected"
 }
 ```
 
+**Automatic Webhook:** </br>
+Setelah proses pengenalan selesai, sistem akan secara otomatis mengirimkan webhook ke endpoint yang sudah dikonfigurasi (jika fitur webhook diaktifkan). 
+Contoh data yang dikirimkan:
+
+```json
+{
+  "water_channel_door_id": 278,
+  "detected_persons": [
+    {"is_human": true, "is_known_person": true},
+    {"is_human": true, "is_known_person": false}
+  ]
+}
+```
+
+**Catatan:**
+- Gambar akan diunduh langsung dari URL yang diberikan
+- Sistem akan mendeteksi semua wajah dalam satu gambar
+- Jika wajah lebih dari satu, hasil dikembalikan dalam bentuk array
+- Webhook dikirim secara asynchronous (tidak menghambat response API)
+- Estimasi waktu respon: ± 200–500 ms (tergantung ukuran gambar & jumlah wajah)
+
 ---
 
-### 4. List Registered Staff
+### 4. Daftar Petugas Terdaftar
 
 **Endpoint:** `GET /registered-staff`
+
+Mengambil daftar selutuh ID petugas yang sudah terdaftar di sistem. 
 
 ```bash
 curl http://localhost:8000/registered-staff
@@ -431,12 +487,8 @@ curl http://localhost:8000/registered-staff
 **Response:**
 ```json
 {
-  "count": 1847,
-  "staff_ids": [
-    "EMP_001",
-    "EMP_002",
-    ...
-  ]
+  "total": 2093,
+  "staff_ids": ["285", "228", "1123", "2130", ...]
 }
 ```
 
@@ -446,7 +498,7 @@ curl http://localhost:8000/registered-staff
 
 **Endpoint:** `POST /reload-database`
 
-Reload embeddings dari disk (gunakan saat ada penghapusan staff)
+Memuat ulang embedding dari database (berguna setelah ada perubahan secara manual).
 
 ```bash
 curl -X POST http://localhost:8000/reload-database
@@ -456,33 +508,23 @@ curl -X POST http://localhost:8000/reload-database
 ```json
 {
   "success": true,
-  "message": "Database reloaded: 1847 embeddings"
+  "message": "Database reloaded successfully",
+  "total_staff": 2093,
+  "staff_ids": ["285", "228", ...]
 }
 ```
 
+**Use Cases:**
+- Setelah menghapus data staf dari database secara manual
+- Setelah melakukan impor data massal melalui SQL
+- Setelah melakukan pemulihan database dari file cadangan
+- Untuk mengosongkan cache di memori dan memuat ulang data terbaru
+
 ---
 
-### 6. Webhook Notification (NEW!)
+### 6. Webhook Notification
 
-**What is Webhook?**
-
-Setelah `/facerecognizer` mengenali wajah, API secara otomatis mengirim hasil detection ke endpoint downstream Anda (Go system). Ini memungkinkan sistem Anda untuk:
-- Menerima notifikasi real-time saat ada wajah terdeteksi
-- Memproses akses/entry secara langsung
-- Melakukan audit trail atau logging
-
-**How it Works:**
-
-```
-Door System
-    ↓
-POST /facerecognizer (blocks 200-500ms)
-    ↓
-API Returns Response ← Webhook sent in background (async)
-    ↓
-Your Go System Receives Webhook (JSON over HTTP)
-```
-
+Setelah `/facerecognizer` mengenali wajah, API secara otomatis mengirim hasil detection ke endpoint downstream (Go system). 
 **Enable Webhook:**
 
 ```bash
@@ -543,15 +585,13 @@ curl -X POST http://localhost:8000/facerecognizer \
   -d '{"image_url":"...", "water_channel_door_id":"278"}'
 ```
 
-See [WEBHOOK_QUICKREF.md](WEBHOOK_QUICKREF.md) for complete guide.
-
 ---
 
 ## 🛠️ Management Scripts
 
 ### 1. Check Registration Status
 
-Check staff yang belum di-register dari CSV:
+Check petugas yang belum di-register dari CSV:
 
 ```bash
 python check_registration.py water_channel_officers.csv
@@ -567,62 +607,70 @@ Registered:          1847
 Missing:             246
 Registration Rate:   88.25%
 
-Missing staff saved to: missing_registrations.csv
-  You can register them using: python bulk_register.py missing_registrations.csv
+Petugas yang belum terdaftar disimpan ke: missing_registrations.csv
+  Dapat didaftarkan dengan perintah: python bulk_register.py missing_registrations.csv
 ```
 
 ### 2. Reset Database
 
-Clear semua data untuk mulai dari awal:
+Manual reset menggunakan SQL:
 
-```bash
-python reset_database.py
+```sql
+-- Hubungkan ke database
+psql -U face_user -d face_recognition
+
+-- Kosongkan tabel face_embeddings
+TRUNCATE TABLE face_embeddings RESTART IDENTITY CASCADE;
+
+-- Verifikasi
+SELECT COUNT(*) FROM face_embeddings;
 ```
 
-**Warning:** Ini akan:
-- Truncate table `face_embeddings` (PostgreSQL)
-- Delete semua .npy files di `face_db/`
-- Delete generated CSV files (failed_registrations.csv, etc.)
-
-### 3. Cleanup Invalid Embeddings
-
-Fix embeddings dengan dimensi salah (128D vs 512D):
-
+**Pembersihan manual file .npy:**
 ```bash
-# Check only (read-only)
-python cleanup_embeddings.py
+# Windows
+Remove-Item face_db\*.npy
 
-# Delete invalid embeddings
-python cleanup_embeddings.py --cleanup
+# Linux/Mac
+rm -rf face_db/*.npy
 ```
 
-**Use Case:** Jika ada error "shapes (512,) and (128,) not aligned" saat recognition.
+### 3. Membersihkan Embedding Tidak Valid
 
-### 4. Test Webhook Integration
+Digunakan untuk mengecek embedding dengan dimensi yang tidak sesuai (misalnya bukan 512D).
+
+```python
+# check_dimensions.py
+from core.db_helper import DatabaseManager
+import numpy as np
+
+db = DatabaseManager()
+embeddings = db.load_all_embeddings()
+
+for staff_id, emb in embeddings.items():
+    if emb.shape[0] != 512:
+        print(f"Invalid: {staff_id} - {emb.shape[0]}D")
+```
+
+### 4. Pengujian integrasi webhook
 
 ```bash
-# Start mock webhook server
+# Jalankan mock webhook server
 python test_webhook_server.py
 
-# Run quick tests
+# Jalankan quick tests
 python test_webhook_quick.py
 ```
 
 ---
 
-## 🔔 Webhook Integration
+## Integrasi Webhook 
 
-### Overview
+### Gambaran Umum
 
-API automatically sends detection results to downstream endpoint (your Go system) setelah recognition selesai.
+API akan secara otomatis mengirim hasil deteksi ke endpoint lanjutan (misalnya sistem Go) setelah proses pengenalan wajah selesai.
 
-**Benefits:**
-- ✅ Real-time notifications
-- ✅ Async (non-blocking API response)
-- ✅ Decoupled architecture
-- ✅ Easy integration dengan existing system
-
-### Configuration
+### Konfigurasi
 
 **Environment Variables:**
 
@@ -646,7 +694,7 @@ $env:WEBHOOK_TIMEOUT="10"
 
 ### Payload Format
 
-**Sent to your Go endpoint:**
+**Data yang dikirim ke endpoint:**
 
 ```json
 {
@@ -659,348 +707,6 @@ $env:WEBHOOK_TIMEOUT="10"
   ]
 }
 ```
-
-**Test Scenarios:**
-
-| Scenario | API Response | Webhook Payload |
-|----------|-------------|-----------------|
-| Known person | `"285"` | `[{"is_human": true, "is_known_person": true}]` |
-| Unknown person | `"unknown"` | `[{"is_human": true, "is_known_person": false}]` |
-| Multiple faces | `["285", "unknown", "228"]` | Array with 3 persons (2 known, 1 unknown) |
-| No faces | `"0"` | `[]` (empty array) |
-
-### Implementation Guide
-
-See complete guide: [WEBHOOK_QUICKREF.md](WEBHOOK_QUICKREF.md)
-
-**How to Implement Go Webhook Endpoint:**
-
-```go
-type DetectedPerson struct {
-    DetectedPersonName string `json:"detected_person_name"`
-    IsKnownPerson      bool   `json:"is_known_person"`
-}
-
-type DetectionWebhookReq struct {
-    WaterChannelDoorID int                `json:"water_channel_door_id"`
-    DetectedPersons    []DetectedPerson   `json:"detected_persons"`
-}
-
-func HandleDetectionWebhook(w http.ResponseWriter, r *http.Request) {
-    var webhook DetectionWebhookReq
-    if err := json.NewDecoder(r.Body).Decode(&webhook); err != nil {
-        http.Error(w, err.Error(), http.StatusBadRequest)
-        return
-    }
-    
-    // Process detection event
-    log.Printf("Door %d: %d persons detected", 
-        webhook.WaterChannelDoorID, len(webhook.DetectedPersons))
-    
-    for _, person := range webhook.DetectedPersons {
-        if person.IsKnownPerson {
-            log.Printf("  - Recognized: %s", person.DetectedPersonID)
-        } else {
-            log.Printf("  - Unknown person")
-        }
-    }
-    
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-```
-
-**Testing Webhook:**
-
-```bash
-# Terminal 1: Start mock webhook server
-pip install flask
-python test_webhook_server.py
-
-# Terminal 2: Enable and test API
-export WEBHOOK_ENABLED=true
-export WEBHOOK_URL=http://localhost:9000/api/detection-webhook
-python run_api.py
-
-# Terminal 3: Send test request
-curl -X POST http://localhost:8000/facerecognizer \
-  -H "Content-Type: application/json" \
-  -d '{
-    "image_url": "https://example.com/photo.jpg",
-    "water_channel_door_id": "DOOR_001"
-  }'
-
-# Check webhook server terminal to see incoming webhook
-```
-
-**Important Notes:**
-- ✅ Webhook is **non-blocking** (async, fire-and-forget)
-- ✅ API returns **immediately** (200-500ms)
-- ✅ Webhook is sent in **background** (~1-5ms overhead)
-- ✅ Webhook **failures don't fail** the API response
-- ✅ All webhook activity is **logged**
-
-For more details, see [WEBHOOK_INTEGRATION.md](WEBHOOK_INTEGRATION.md)
-
----
-
-## ⚙️ Konfigurasi
-
-### config.py
-
-```python
-# Face Recognition Settings
-FACE_DB_PATH = "face_db"                    # Tempat simpan .npy files
-RECOGNITION_THRESHOLD = 0.45                # Similarity threshold (0-1)
-BLUR_THRESHOLD = 100.0                      # Blur detection threshold
-MAX_YAW = 30                                 # Max head rotation (degrees)
-
-# API Settings
-API_HOST = "0.0.0.0"                        # Bind to all interfaces
-API_PORT = 8000                             # Port
-API_RELOAD = True                           # Auto-reload on code change
-
-# CORS Settings
-CORS_ORIGINS = ["*"]                        # Allow all domains
-
-# Model Settings
-MODEL_NAME = "buffalo_l"                    # InsightFace model
-PROVIDERS = ["CPUExecutionProvider"]        # CPU atau CUDAExecutionProvider (GPU)
-
-# Database Settings (Production)
-DB_HOST = "192.168.1.100"                   # PostgreSQL server
-DB_PORT = 5432
-DB_NAME = "face_recognition"
-DB_USER = "face_user"
-DB_PASSWORD = "secure_password_123"
-
-# Webhook Settings (NEW!)
-WEBHOOK_ENABLED = False                     # Enable webhook integration
-WEBHOOK_URL = "http://localhost:9000/api/detection-webhook"  # Downstream endpoint
-WEBHOOK_TIMEOUT = 10                        # Request timeout (seconds)
-```
-
-### Environment Variables
-
-```bash
-# Face Recognition
-export RECOGNITION_THRESHOLD=0.45
-export API_PORT=8000
-export LOG_LEVEL=INFO
-
-# Webhook (NEW!)
-export WEBHOOK_ENABLED=true
-export WEBHOOK_URL=http://192.168.1.10:9000/api/detection-webhook
-export WEBHOOK_TIMEOUT=10
-```
-
----
-
-## 🛠️ Troubleshooting
-
-### Error: "Connection to server at localhost failed"
-
-**Penyebab:** PostgreSQL tidak running
-
-**Solusi:**
-```bash
-# Check status
-psql --version
-
-# Start PostgreSQL (Windows)
-net start postgresql-x64-14
-
-# Start PostgreSQL (Linux)
-sudo systemctl start postgresql
-```
-
-### Error: "FATAL: password authentication failed"
-
-**Penyebab:** Password `postgres` salah
-
-**Solusi:**
-```bash
-# Reset password
-psql -U postgres -c "ALTER USER postgres WITH PASSWORD 'new_password'"
-```
-
-### Error: "No face detected in photo"
-
-**Penyebab:** Foto tidak memiliki wajah yang jelas
-
-**Solusi:**
-- Pastikan wajah jelas, bukan blur/gelap
-- Lighting minimal 300 lux
-- Wajah minimal 100x100 pixel
-
-### Error: "Transaction aborted"
-
-**Penyebab:** Database table permissions salah
-
-**Solusi:**
-```sql
--- Re-run setup
-psql -U postgres face_recognition
-GRANT SELECT, INSERT, UPDATE ON face_embeddings TO face_user;
-GRANT USAGE, SELECT ON SEQUENCE face_embeddings_id_seq TO face_user;
-```
-
-### Error: "OutOfMemory during model loading"
-
-**Penyebab:** RAM tidak cukup
-
-**Solusi:**
-- Use GPU (CUDA) jika tersedia
-- Upgrade RAM ke minimal 8GB
-- Kurangi batch size
-
-### Recognition Accuracy Rendah
-
-**Solusi:**
-1. Increase photo quality saat register (pencahayaan lebih baik)
-2. Register 4+ photo dari berbagai angle
-3. Adjust RECOGNITION_THRESHOLD di config.py:
-   - Lower (0.35) = lebih sensitive, lebih false positive
-   - Higher (0.55) = lebih strict, lebih false negative
-
----
-
-## 📂 Struktur Code
-
-### `api/app.py` (310 lines)
-
-Main FastAPI application dengan 5 endpoints:
-
-```python
-# Endpoints:
-GET  /health                    # Server status
-POST /faceregister              # Register staff (4 photos)
-POST /facerecognizer            # Recognize faces dari URL
-GET  /registered-staff          # List semua staff
-POST /reload-database           # Reload embeddings
-```
-
-Key features:
-- Lifespan context manager untuk resource management
-- CORS middleware untuk cross-origin requests
-- Async/await untuk I/O operations
-- Proper error handling & logging
-
-### `api/models.py` (27 lines)
-
-Pydantic models untuk validation:
-
-```python
-RegisterRequest          # staff_id + 4 photos
-RegisterResponse         # success + message
-RecognitionResponse      # recognized_ids + door_id + message
-HealthResponse          # status + message
-```
-
-### `core/face_recog.py` (150+ lines)
-
-Face recognition logic:
-
-```python
-FaceRecognition
-├─ __init__()               # Load model
-├─ load_database()          # Load .npy embeddings
-├─ reload_database()        # Clear & reload (cache invalidation)
-├─ register()               # Register dari 4 photos
-├─ register_single_photo()  # Register dari 1 photo (bulk)
-├─ recognize()              # Detect & match faces
-└─ recognize_embedding()    # Similarity matching
-```
-
-### `config.py` (64 lines)
-
-Centralized configuration:
-
-```python
-Config                 # Base configuration
-├─ DevelopmentConfig   # DEBUG=True
-└─ ProductionConfig    # DEBUG=False
-```
-
-### `test_db.py` (60 lines)
-
-Database connection tester:
-
-```bash
-python test_db.py
-```
-
-### `bulk_register.py` (150+ lines)
-
-Bulk registration script untuk CSV:
-
-```bash
-python bulk_register.py water_channel_officers.csv
-```
-
-Features:
-- Download photo dari URL
-- Generate embedding
-- Save ke PostgreSQL
-- Error handling & retry
-- Progress bar
-- Export failed list
-
-### `run_api.py` (20 lines)
-
-Simple API runner:
-
-```bash
-python run_api.py
-```
-
----
-
-## 📊 Performance Metrics
-
-### Registration Time
-- Per staff: 2-3 detik (depend internet speed)
-- 2000 staff: ~1-2 jam
-
-### Recognition Time
-- Per image: 500-1000ms
-- Throughput: ~1-2 faces/second
-
-### Storage
-- Per embedding: 512 bytes
-- 2000 staff: ~1MB total
-- Database file: ~100MB dengan index
-
-### Network
-- Image download: ~500KB typical
-- Response size: <1KB
-- Bandwidth per door/hari: ~50GB (1000 images/day)
-
----
-
-## 🔐 Security Notes
-
-### Database Security
-
-✅ **Done:**
-- Limited user `face_user` (tidak punya DELETE/DROP)
-- Password hashed
-- Network isolation (lokal saat ini)
-
-✅ **Todo:**
-- SSL/TLS encryption (untuk production)
-- IP whitelist (hanya dari doors)
-- Audit logging (siapa akses kapan)
-- Rate limiting (prevent brute force)
-
-### API Security
-
-✅ **Todo:**
-- API key authentication
-- Request signing
-- HTTPS only (production)
-- DDoS protection
-
 ---
 
 ## 📖 Additional Resources
